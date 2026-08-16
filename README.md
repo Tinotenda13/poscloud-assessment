@@ -70,7 +70,13 @@ UPSTREAM_URL=http://localhost:8001
 psql -U postgres -c "CREATE DATABASE poscloud_upstream;"
 ```
 
-### 6. Run upstream server (port 8001)
+### 6. Activate venv python environment
+```
+venv\Scripts\activate   
+
+```
+
+### 6.1 Run upstream server (port 8001)
 ```bash
 cd upstream_server
 python -m uvicorn main:app --port 8001 --reload
@@ -78,7 +84,10 @@ python -m uvicorn main:app --port 8001 --reload
 
 ### 7. Run local server (port 8000) — in a new terminal
 ```bash
+
+
 cd local_server
+
 python -m uvicorn main:app --port 8000 --reload
 ```
 
