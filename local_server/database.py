@@ -2,14 +2,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Float, DateTime, func
 from datetime import datetime
-import os
-from dotenv import load_dotenv
 
-load_dotenv(dotenv_path="../.env")
-
-POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql+asyncpg://postgres:Tinotenda@localhost:5432/poscloud")
-
-engine = create_async_engine(POSTGRES_URL, echo=False)
+engine = create_async_engine("sqlite+aiosqlite:///./local_pos.db", echo=False)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
