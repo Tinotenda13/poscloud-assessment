@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+aiosqlite
+asyncpg
+httpx
+apscheduler
+pydantic
+python-dotenv
+jinja2
+python-multipart
