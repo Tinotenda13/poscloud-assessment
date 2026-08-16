@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="card">
+    <h2 style="margin-bottom:1rem;">Transactions</h2>
+    {% if transactions %}
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Cashier</th>
+                <th>Amount</th>
+                <th>Description</th>
+                <th>Created At</th>
+                <th>Sync Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for txn in transactions %}
+            <tr>
+                <td>{{ txn.id }}</td>
+                <td>{{ txn.cashier }}</td>
+                <td>${{ "%.2f"|format(txn.amount) }}</td>
+                <td>{{ txn.description }}</td>
+                <td>{{ txn.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td>
+                    <span class="badge badge-{{ txn.sync_status }}">{{ txn.sync_status }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color:#888;">No transactions yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
