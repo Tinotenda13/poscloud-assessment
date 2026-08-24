@@ -1,107 +1,164 @@
-# POSCloud – Offline Retail Transaction System
+# POSCloud – Offline-First Retail Transaction System
+
+## Project Overview
+
+POSCloud is an offline-first Point of Sale (POS) system built as part of a software development internship project. It solves a real-world problem faced by retail businesses in areas with unreliable internet connectivity — transactions must never be lost, even when the network goes down.
+
+The system consists of two servers:
+- A **local server** that runs on the POS device, stores transactions in SQLite, and works fully offline
+- An **upstream server** that runs in the cloud, receives synced transactions, and stores them in PostgreSQL
+
+---
 
 ## Architecture
 
 ```
-[Cashier / POS Device]
+[Cashier / Browser UI]
         │
         ▼
- local_server  (FastAPI + SQLite)   ← always available, offline-first
-        │  background sync every 10s
+ local_server  (FastAPI + SQLite, port 8000)   ← always available, offline-first
+        │  background sync every 10s (only when online)
         ▼
-upstream_server (FastAPI + MySQL)   ← central server
+upstream_server (FastAPI + PostgreSQL, port 8001)   ← central cloud server
 ```
 
-- The **local server** runs on the POS device. Transactions are always written to SQLite first.
-- A background scheduler retries syncing `pending` transactions to the upstream every 10 seconds.
-- The **upstream server** enforces a `UNIQUE` constraint on `idempotency_key` — duplicate pushes return `409` and are safely ignored.
-- Both `200/201` and `409` from upstream cause the local record to be marked `synced`.
-- If connectivity drops mid-sync, the scheduler picks up remaining `pending` records on the next run.
+---
+
+## Features
+
+- Cashier login with session-based authentication
+- Create and view transactions from a browser UI
+- Transactions saved locally first — no network required
+- Automatic background sync to upstream every 10 seconds when online
+- Manual sync trigger from the UI
+- Dashboard with summary stats: total transactions, total sales, synced count, pending count
+- Duplicate prevention using UUID idempotency keys
+- Transactions survive app and device restarts (SQLite persists to disk)
+
+---
+
+## Technologies
+
+| Layer | Technology |
+|-------|------------|
+| Local server | FastAPI, SQLite (via aiosqlite) |
+| Upstream server | FastAPI, PostgreSQL (via asyncpg) |
+| ORM | SQLAlchemy (async) |
+| Background sync | APScheduler |
+| HTTP client | HTTPX |
+| UI | Jinja2 templates |
+| Auth | Cookie-based sessions |
 
 ---
 
 ## Setup
 
-### 1. Install dependencies
+### Prerequisites
+- Python 3.12+
+- PostgreSQL running locally
+
+### 1. Clone and navigate
+```bash
+git clone https://github.com/Tinotenda13/poscloud-assessment.git
+cd poscloud-assessment
+```
+
+### 2. Create virtual environment
+```bash
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS/Linux
+```
+
+### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 4. Configure environment
 Edit `.env`:
 ```
-POSTGRES_URL=postgresql+asyncpg://<user>:<password>@localhost:5432/poscloud
+UPSTREAM_POSTGRES_URL=postgresql+asyncpg://<user>:<password>@localhost:5432/poscloud_upstream
 UPSTREAM_URL=http://localhost:8001
 ```
 
-### 3. Initialize PostgreSQL
+### 5. Create upstream PostgreSQL database
 ```bash
-psql -U postgres -f init_db.sql
+psql -U postgres -c "CREATE DATABASE poscloud_upstream;"
 ```
 
-### 4. Run upstream server (port 8001)
+### 6. Run upstream server (port 8001)
 ```bash
 cd upstream_server
-uvicorn main:app --port 8001 --reload
+python -m uvicorn main:app --port 8001 --reload
 ```
 
-### 5. Run local server (port 8000)
+### 7. Run local server (port 8000) — in a new terminal
 ```bash
 cd local_server
-uvicorn main:app --port 8000 --reload
+python -m uvicorn main:app --port 8000 --reload
 ```
+
+Open http://localhost:8000 in your browser and log in with:
+- **Username:** admin
+- **Password:** admin123
 
 ---
 
-## API Reference
+## How Sync Works
 
-### Local Server (`http://localhost:8000`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/transactions` | Create a new transaction |
-| `GET`  | `/transactions` | List all transactions (with sync status) |
-| `GET`  | `/transactions/{idempotency_key}` | Get a single transaction |
-| `POST` | `/sync/trigger` | Manually trigger sync |
-
-#### POST /transactions – Request Body
-```json
-{
-  "cashier": "Jane",
-  "amount": 49.99,
-  "description": "Groceries",
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000"  // optional, auto-generated if omitted
-}
-```
-
-#### Transaction Response
-```json
-{
-  "id": 1,
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-  "cashier": "Jane",
-  "amount": 49.99,
-  "description": "Groceries",
-  "created_at": "2024-01-15T10:30:00",
-  "sync_status": "pending"   // or "synced"
-}
-```
-
-### Upstream Server (`http://localhost:8001`)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/transactions` | Ingest a transaction (idempotent) |
-| `GET`  | `/transactions` | List all synced transactions |
+1. On startup, APScheduler registers a job that runs `sync_pending_transactions()` every 10 seconds.
+2. Before syncing, the function pings `https://www.google.com` with a 3-second timeout. If it fails, sync is skipped and retried on the next tick.
+3. If online, all transactions with `sync_status = pending` are fetched and pushed one by one to the upstream `/transactions` endpoint.
+4. A `201` (created) or `409` (already exists) response both result in the local record being marked `synced`.
+5. Any network error during sync stops the loop — remaining `pending` records are retried next cycle.
 
 ---
 
 ## Key Design Decisions
 
-| Concern | Solution |
-|---------|----------|
-| Offline persistence | SQLite on device — survives restarts |
-| Duplicate prevention | `idempotency_key` (UUID) with `UNIQUE` constraint on both DBs |
-| Sync retry | APScheduler polls every 10s; stops on first network error, resumes next cycle |
-| Mid-sync crash recovery | Only marks `synced` after confirmed upstream `2xx` or `409` |
-| Connectivity loss mid-sync | Remaining `pending` rows are retried on next scheduler tick |
+| Concern | Decision | Reasoning |
+|---------|----------|-----------|
+| Local storage | SQLite | File-based, zero-config, survives restarts, no server needed on device |
+| Upstream storage | PostgreSQL | Robust, production-grade central database |
+| Duplicate prevention | UUID `idempotency_key` + `UNIQUE` constraint | Retrying a sync never creates duplicates |
+| Connectivity check | Ping `google.com` | Simple, reliable offline simulation |
+| Sync trigger | APScheduler every 10s | Automatic recovery without manual intervention |
+| Auth | Cookie-based session | Simple and stateless, no extra dependencies |
+| Mid-sync recovery | Mark `synced` only after confirmed upstream response | Guarantees no silent data loss |
+
+---
+
+## Test Scenario
+
+### Online → Offline → Restart → Restore Internet → Auto Sync
+
+**Step 1 — Start both servers**
+```bash
+# Terminal 1
+cd upstream_server && python -m uvicorn main:app --port 8001 --reload
+
+# Terminal 2
+cd local_server && python -m uvicorn main:app --port 8000 --reload
+```
+
+**Step 2 — Login and process a sale while online**
+- Open http://localhost:8000/login and log in
+- Submit a transaction via http://localhost:8000/new-transaction
+- Dashboard should show it as `synced` within 10 seconds
+
+**Step 3 — Go offline**
+- Disconnect from the internet (turn off Wi-Fi or unplug ethernet)
+
+**Step 4 — Process multiple sales while offline**
+- Submit 2–3 more transactions
+- They will appear on the dashboard with status `pending`
+
+**Step 5 — Restart the application**
+- Stop the local server (`CTRL+C`) and restart it
+- All offline transactions are still there with status `pending`
+
+**Step 6 — Restore internet**
+- Reconnect to the internet
+- Within 10 seconds all pending transactions will sync automatically
+- Verify on the upstream: http://localhost:8001/transactions

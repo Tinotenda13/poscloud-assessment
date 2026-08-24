@@ -8,6 +8,7 @@ from database import init_db, get_db, Transaction
 from schemas import TransactionIngest, TransactionResponse
 
 
+# On startup: init the PostgreSQL DB tables. No scheduler needed — upstream is always online.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
@@ -16,7 +17,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="POS Upstream Server", lifespan=lifespan)
 
-# Create a transaction endpoint that accepts a POST request with a JSON payload containing the transaction details. The endpoint should validate the payload, create a new transaction record in the database, and return a response indicating success or failure. If the transaction already exists (based on the idempotency key), it should return a 409 Conflict response.  
+# Receives a transaction from the local server. Saves it to PostgreSQL.
+# Returns 409 if already exists (idempotent) so local server can mark it as synced.
 @app.post("/transactions", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_transaction(payload: TransactionIngest, db: AsyncSession = Depends(get_db)):
     txn = Transaction(
@@ -40,7 +42,7 @@ async def ingest_transaction(payload: TransactionIngest, db: AsyncSession = Depe
         existing = result.scalar_one()
         return JSONResponse(status_code=409, content={"detail": "Already exists", "idempotency_key": existing.idempotency_key})
 
-# List transactions endpoint that accepts a GET request and returns a list of all transactions in the database, ordered by creation date (most recent first). The response should include the transaction details in JSON format.
+# Returns all transactions from PostgreSQL, newest first.
 @app.get("/transactions", response_model=list[TransactionResponse])
 async def list_transactions(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Transaction).order_by(Transaction.created_at.desc()))

@@ -1,6 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
+
+<!-- Summary stats cards -->
+<div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1rem; margin-bottom:1.5rem;">
+    <div class="card" style="margin:0; text-align:center;">
+        <div style="font-size:0.85rem; color:#888;">Total Transactions</div>
+        <div style="font-size:1.8rem; font-weight:bold; color:#2c3e50;">{{ total }}</div>
+    </div>
+    <div class="card" style="margin:0; text-align:center;">
+        <div style="font-size:0.85rem; color:#888;">Total Sales</div>
+        <div style="font-size:1.8rem; font-weight:bold; color:#3498db;">${{ "%.2f"|format(total_amount) }}</div>
+    </div>
+    <div class="card" style="margin:0; text-align:center;">
+        <div style="font-size:0.85rem; color:#888;">Synced</div>
+        <div style="font-size:1.8rem; font-weight:bold; color:#27ae60;">{{ synced }}</div>
+    </div>
+    <div class="card" style="margin:0; text-align:center;">
+        <div style="font-size:0.85rem; color:#888;">Pending</div>
+        <div style="font-size:1.8rem; font-weight:bold; color:#f39c12;">{{ pending }}</div>
+    </div>
+</div>
+
 <div class="card">
     <h2 style="margin-bottom:1rem;">Transactions</h2>
     {% if transactions %}
