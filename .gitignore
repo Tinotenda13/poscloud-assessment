@@ -1,0 +1,16 @@
+# Environment variables - never commit this
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# Database files
+*.db
+
+# IDE
+.vscode/
+.idea/

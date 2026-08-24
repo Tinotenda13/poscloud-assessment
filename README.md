@@ -1,15 +1,12 @@
-# POSCloud – Offline Retail Transaction System
+# POSCloud – Offline-First Retail Transaction System
 
-## Technologies
+## Project Overview
 
-| Layer | Technology |
-|-------|------------|
-| Local server | FastAPI, SQLite (via aiosqlite) |
-| Upstream server | FastAPI, PostgreSQL (via asyncpg) |
-| ORM | SQLAlchemy (async) |
-| Background sync | APScheduler |
-| HTTP client | HTTPX |
-| UI | Jinja2 templates |
+POSCloud is an offline-first Point of Sale (POS) system built as part of a software development internship project. It solves a real-world problem faced by retail businesses in areas with unreliable internet connectivity — transactions must never be lost, even when the network goes down.
+
+The system consists of two servers:
+- A **local server** that runs on the POS device, stores transactions in SQLite, and works fully offline
+- An **upstream server** that runs in the cloud, receives synced transactions, and stores them in PostgreSQL
 
 ---
 
@@ -22,15 +19,35 @@
  local_server  (FastAPI + SQLite, port 8000)   ← always available, offline-first
         │  background sync every 10s (only when online)
         ▼
-upstream_server (FastAPI + PostgreSQL, port 8001)   ← central server
+upstream_server (FastAPI + PostgreSQL, port 8001)   ← central cloud server
 ```
 
-- The **local server** runs on the POS device. Transactions are always written to a local SQLite file (`local_pos.db`) first — no network required.
-- A background scheduler checks internet connectivity every 10 seconds by pinging `google.com`. If online, it pushes all `pending` transactions to the upstream server.
-- The **upstream server** uses PostgreSQL and enforces a `UNIQUE` constraint on `idempotency_key` — duplicate pushes return `409` and are safely ignored.
-- Both `201` and `409` responses from upstream cause the local record to be marked `synced`.
-- If connectivity drops mid-sync, remaining `pending` records are retried on the next scheduler tick.
-- SQLite persists to disk — transactions survive application and device restarts.
+---
+
+## Features
+
+- Cashier login with session-based authentication
+- Create and view transactions from a browser UI
+- Transactions saved locally first — no network required
+- Automatic background sync to upstream every 10 seconds when online
+- Manual sync trigger from the UI
+- Dashboard with summary stats: total transactions, total sales, synced count, pending count
+- Duplicate prevention using UUID idempotency keys
+- Transactions survive app and device restarts (SQLite persists to disk)
+
+---
+
+## Technologies
+
+| Layer | Technology |
+|-------|------------|
+| Local server | FastAPI, SQLite (via aiosqlite) |
+| Upstream server | FastAPI, PostgreSQL (via asyncpg) |
+| ORM | SQLAlchemy (async) |
+| Background sync | APScheduler |
+| HTTP client | HTTPX |
+| UI | Jinja2 templates |
+| Auth | Cookie-based sessions |
 
 ---
 
@@ -70,13 +87,7 @@ UPSTREAM_URL=http://localhost:8001
 psql -U postgres -c "CREATE DATABASE poscloud_upstream;"
 ```
 
-### 6. Activate venv python environment
-```
-venv\Scripts\activate   
-
-```
-
-### 6.1 Run upstream server (port 8001)
+### 6. Run upstream server (port 8001)
 ```bash
 cd upstream_server
 python -m uvicorn main:app --port 8001 --reload
@@ -84,52 +95,43 @@ python -m uvicorn main:app --port 8001 --reload
 
 ### 7. Run local server (port 8000) — in a new terminal
 ```bash
-
-
 cd local_server
-
 python -m uvicorn main:app --port 8000 --reload
 ```
 
-Open http://localhost:8000 in your browser.
+Open http://localhost:8000 in your browser and log in with:
+- **Username:** admin
+- **Password:** admin123
 
 ---
 
-## Local Storage Approach
-
-The local server uses **SQLite** via `aiosqlite`. The database file (`local_pos.db`) lives on the device filesystem. This means:
-- No database server required on the device
-- Transactions persist across application and device restarts
-- Works completely without any network connection
-
----
-
-## Synchronization Strategy
+## How Sync Works
 
 1. On startup, APScheduler registers a job that runs `sync_pending_transactions()` every 10 seconds.
-2. Before attempting sync, the function pings `https://www.google.com` with a 3-second timeout. If it fails, sync is skipped and retried on the next tick.
+2. Before syncing, the function pings `https://www.google.com` with a 3-second timeout. If it fails, sync is skipped and retried on the next tick.
 3. If online, all transactions with `sync_status = pending` are fetched and pushed one by one to the upstream `/transactions` endpoint.
 4. A `201` (created) or `409` (already exists) response both result in the local record being marked `synced`.
-5. Any network error during sync stops the loop — already-synced records keep their status and remaining `pending` records are retried next cycle.
+5. Any network error during sync stops the loop — remaining `pending` records are retried next cycle.
 
 ---
 
-## Key Technical Decisions
+## Key Design Decisions
 
 | Concern | Decision | Reasoning |
 |---------|----------|-----------|
 | Local storage | SQLite | File-based, zero-config, survives restarts, no server needed on device |
 | Upstream storage | PostgreSQL | Robust, production-grade central database |
-| Duplicate prevention | UUID `idempotency_key` + `UNIQUE` constraint on both DBs | Retrying a sync never creates duplicates |
-| Connectivity check | Ping `google.com` | Simple, reliable way to simulate offline by toggling internet |
+| Duplicate prevention | UUID `idempotency_key` + `UNIQUE` constraint | Retrying a sync never creates duplicates |
+| Connectivity check | Ping `google.com` | Simple, reliable offline simulation |
 | Sync trigger | APScheduler every 10s | Automatic recovery without manual intervention |
+| Auth | Cookie-based session | Simple and stateless, no extra dependencies |
 | Mid-sync recovery | Mark `synced` only after confirmed upstream response | Guarantees no silent data loss |
 
 ---
 
 ## Test Scenario
 
-### Online → Process Sale → Go Offline → Process Multiple Sales → Restart → Restore Internet → Auto Sync
+### Online → Offline → Restart → Restore Internet → Auto Sync
 
 **Step 1 — Start both servers**
 ```bash
@@ -140,26 +142,23 @@ cd upstream_server && python -m uvicorn main:app --port 8001 --reload
 cd local_server && python -m uvicorn main:app --port 8000 --reload
 ```
 
-**Step 2 — Process a sale while online**
-- Open http://localhost:8000/new-transaction
-- Submit a transaction (e.g. Cashier: Alice, Amount: 25.00, Description: Coffee)
-- Go to http://localhost:8000 — the transaction should show `synced` within 10 seconds
+**Step 2 — Login and process a sale while online**
+- Open http://localhost:8000/login and log in
+- Submit a transaction via http://localhost:8000/new-transaction
+- Dashboard should show it as `synced` within 10 seconds
 
 **Step 3 — Go offline**
-- Disconnect your machine from the internet (turn off Wi-Fi or unplug ethernet)
+- Disconnect from the internet (turn off Wi-Fi or unplug ethernet)
 
 **Step 4 — Process multiple sales while offline**
-- Submit 2–3 more transactions via http://localhost:8000/new-transaction
+- Submit 2–3 more transactions
 - They will appear on the dashboard with status `pending`
-- The local server logs will show: `No internet connection, skipping sync.`
 
 **Step 5 — Restart the application**
-- Stop the local server (`CTRL+C`)
-- Restart it: `python -m uvicorn main:app --port 8000 --reload`
-- Open http://localhost:8000 — all offline transactions are still there with status `pending`
+- Stop the local server (`CTRL+C`) and restart it
+- All offline transactions are still there with status `pending`
 
 **Step 6 — Restore internet**
 - Reconnect to the internet
-- Within 10 seconds the scheduler will sync all pending transactions
-- Refresh http://localhost:8000 — all transactions now show `synced`
+- Within 10 seconds all pending transactions will sync automatically
 - Verify on the upstream: http://localhost:8001/transactions
