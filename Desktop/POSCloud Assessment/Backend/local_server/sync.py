@@ -4,9 +4,10 @@ from sqlalchemy import select, update
 from database import SessionLocal, Transaction
 
 logger = logging.getLogger(__name__)
-UPSTREAM_URL = None  # injected from main
+UPSTREAM_URL = None  # set by main.py from environment variable
 
 
+# checks Google with a 3s timeout. Returns True if online, False if no internet.
 async def is_online() -> bool:
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
@@ -17,12 +18,12 @@ async def is_online() -> bool:
 
 
 async def sync_pending_transactions():
-    if not await is_online():
+    if not await is_online():  # skip if no internet
         logger.warning("No internet connection, skipping sync.")
         return
     async with SessionLocal() as db:
         result = await db.execute(
-            select(Transaction).where(Transaction.sync_status == "pending")
+            select(Transaction).where(Transaction.sync_status == "pending")  # fetch only pending
         )
         pending = result.scalars().all()
 
@@ -32,7 +33,7 @@ async def sync_pending_transactions():
         async with httpx.AsyncClient(timeout=5.0) as client:
             for txn in pending:
                 try:
-                    resp = await client.post(
+                    resp = await client.post(  # POST each transaction to upstream
                         f"{UPSTREAM_URL}/transactions",
                         json={
                             "idempotency_key": txn.idempotency_key,
@@ -42,17 +43,16 @@ async def sync_pending_transactions():
                             "created_at": txn.created_at.isoformat(),
                         },
                     )
-                    # 200 OK or 409 Conflict (already exists) both mean success
-                    if resp.status_code in (200, 201, 409):
+                    if resp.status_code in (200, 201, 409):  # 409 means already exists, still counts
                         await db.execute(
                             update(Transaction)
                             .where(Transaction.id == txn.id)
-                            .values(sync_status="synced")
+                            .values(sync_status="synced")  # mark as synced
                         )
                         await db.commit()
                         logger.info(f"Synced transaction {txn.idempotency_key}")
                     else:
-                        logger.warning(f"Upstream rejected {txn.idempotency_key}: {resp.status_code}")
+                        logger.warning(f"Upstream rejected {txn.idempotency_key}: {resp.status_code}")  # log and move on
                 except httpx.RequestError as e:
                     logger.warning(f"Upstream unreachable, will retry later: {e}")
-                    break  # stop trying; scheduler will retry
+                    break  # stop loop; scheduler retries in 10s
