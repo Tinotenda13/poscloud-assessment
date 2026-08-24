@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}New Transaction{% endblock %}
+{% block content %}
+<div class="card" style="max-width:500px;">
+    <h2 style="margin-bottom:1.5rem;">New Transaction</h2>
+    {% if message %}
+    <div class="alert alert-{{ message_type }}">{{ message }}</div>
+    {% endif %}
+    <form method="post" action="/new-transaction">
+        <div style="margin-bottom:1rem;">
+            <label style="display:block;margin-bottom:0.3rem;font-weight:600;">Cashier</label>
+            <input type="text" name="cashier" required style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:5px;">
+        </div>
+        <div style="margin-bottom:1rem;">
+            <label style="display:block;margin-bottom:0.3rem;font-weight:600;">Amount</label>
+            <input type="number" name="amount" step="0.01" min="0" required style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:5px;">
+        </div>
+        <div style="margin-bottom:1.5rem;">
+            <label style="display:block;margin-bottom:0.3rem;font-weight:600;">Description</label>
+            <input type="text" name="description" required style="width:100%;padding:0.5rem;border:1px solid #ddd;border-radius:5px;">
+        </div>
+        <button type="submit" class="btn btn-primary">Submit Transaction</button>
+    </form>
+</div>
+{% endblock %}

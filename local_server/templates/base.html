@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSCloud - {% block title %}{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f4f6f9; color: #333; }
+        nav { background: #2c3e50; padding: 1rem 2rem; display: flex; align-items: center; gap: 2rem; }
+        nav a { color: #fff; text-decoration: none; font-size: 0.95rem; }
+        nav a:hover { color: #3498db; }
+        nav .brand { font-size: 1.2rem; font-weight: bold; color: #3498db; }
+        .container { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+        .card { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        .btn { padding: 0.5rem 1.2rem; border: none; border-radius: 5px; cursor: pointer; font-size: 0.9rem; }
+        .btn-primary { background: #3498db; color: #fff; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn:hover { opacity: 0.85; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { background: #f8f9fa; font-weight: 600; }
+        .badge { padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
+        .badge-synced { background: #d4edda; color: #155724; }
+        .badge-pending { background: #fff3cd; color: #856404; }
+        .badge-failed { background: #f8d7da; color: #721c24; }
+        .alert { padding: 0.75rem 1rem; border-radius: 5px; margin-bottom: 1rem; }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <nav>
+        <span class="brand">POSCloud</span>
+        <a href="/">Dashboard</a>
+        <a href="/new-transaction">New Transaction</a>
+        <a href="/sync">Sync</a>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

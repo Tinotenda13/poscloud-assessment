@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sync{% endblock %}
+{% block content %}
+<div class="card" style="max-width:500px;">
+    <h2 style="margin-bottom:1rem;">Sync Status</h2>
+    {% if message %}
+    <div class="alert alert-{{ message_type }}">{{ message }}</div>
+    {% endif %}
+    <p style="margin-bottom:1.5rem;color:#555;">Transactions sync automatically every 10 seconds. You can also trigger a manual sync below.</p>
+    <form method="post" action="/sync">
+        <button type="submit" class="btn btn-success">Trigger Manual Sync</button>
+    </form>
+</div>
+{% endblock %}
